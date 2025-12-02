@@ -3,9 +3,7 @@ import type { KeyboardEvent } from "react"
 
 import { useState, useRef, useEffect } from "react"
 import { ArrowLeft, Mic, Volume2, Loader2, Send, Sparkles } from "lucide-react"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { useParams, useRouter, useSearchParams } from "next/navigation"
 
 const scenarioData: Record<string, any> = {
   "meeting-friend": {
@@ -63,24 +61,24 @@ interface Message {
 }
 
 export default function PracticePage() {
-  const params = useParams()
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const scenarioId = params?.scenarioId as string
-  const languageId = searchParams?.get("language") || "english"
+  // Simular params da URL - você precisará adaptar isso para seu roteamento real
+  const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
+  const scenarioId = typeof window !== 'undefined' ? window.location.pathname.split('/').pop() || "" : ""
+  const languageId = urlParams.get("language") || "english"
 
   const scenario = scenarioData[scenarioId]
   const language = languageConfig[languageId]
 
-  const systemPrompt = `You are ${scenario?.character}, a friendly ${scenario?.characterRole} helping a Brazilian student practice ${language?.nativeName} (${language?.name}).
+  // Proteção adicional para evitar undefined
+  const systemPrompt = scenario && language ? `You are ${scenario.character}, a friendly ${scenario.characterRole} helping a Brazilian student practice ${language.nativeName} (${language.name}).
 
 IMPORTANT INSTRUCTIONS:
-- Respond naturally in ${language?.nativeName} to the conversation
-- After each of your ${language?.nativeName} responses, add a feedback section in Portuguese starting with "💡 Feedback:"
+- Respond naturally in ${language.nativeName} to the conversation
+- After each of your ${language.nativeName} responses, add a feedback section in Portuguese starting with "💡 Feedback:"
 - In the feedback, comment on: pronunciation hints, grammar corrections if needed, vocabulary suggestions, and encouragement
 - Keep feedback brief (2-3 sentences) and positive
 - If they make mistakes, correct them gently in the feedback section
-- At the end of conversation (if they say goodbye), provide a performance summary in Portuguese`
+- At the end of conversation (if they say goodbye), provide a performance summary in Portuguese` : ""
 
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
@@ -92,18 +90,22 @@ IMPORTANT INSTRUCTIONS:
   const [speechSupported, setSpeechSupported] = useState(false)
   const recognitionRef = useRef<any>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const [messageCountInCredit, setMessageCountInCredit] = useState(0) // Track messages in current credit
-  const [showCreditWarning, setShowCreditWarning] = useState(false) // Warning when approaching limit
+  const [messageCountInCredit, setMessageCountInCredit] = useState(0)
+  const [showCreditWarning, setShowCreditWarning] = useState(false)
 
   useEffect(() => {
     async function fetchCreditsAndMessages() {
       try {
         const response = await fetch("/api/credits")
+        if (!response.ok) {
+          throw new Error("Failed to fetch credits")
+        }
         const data = await response.json()
-        setUserCredits(data.credits)
-        setMessageCountInCredit(data.message_count || 0) // Get message count
+        setUserCredits(data.credits ?? 0)
+        setMessageCountInCredit(data.message_count || 0)
       } catch (error) {
         console.error("[v0] Error fetching credits:", error)
+        setUserCredits(0)
       }
     }
     fetchCreditsAndMessages()
@@ -126,12 +128,14 @@ IMPORTANT INSTRUCTIONS:
         recognition.maxAlternatives = 1
 
         recognition.onresult = (event: any) => {
-          const transcript = event.results[0][0].transcript
-          console.log("[v0] Audio transcribed:", transcript)
-          setInput(transcript)
-          setTimeout(() => {
-            handleSendAfterTranscription(transcript)
-          }, 100)
+          const transcript = event.results?.[0]?.[0]?.transcript
+          if (transcript && typeof transcript === "string") {
+            console.log("[v0] Audio transcribed:", transcript)
+            setInput(transcript)
+            setTimeout(() => {
+              handleSendAfterTranscription(transcript)
+            }, 100)
+          }
         }
 
         recognition.onerror = (event: any) => {
@@ -150,7 +154,7 @@ IMPORTANT INSTRUCTIONS:
   }, [scenario, language])
 
   const handleSendAfterTranscription = async (transcribedText: string) => {
-    if (!transcribedText.trim() || isLoading) return
+    if (!transcribedText || typeof transcribedText !== "string" || !transcribedText.trim() || isLoading) return
 
     const userMessage: Message = {
       role: "user",
@@ -165,7 +169,7 @@ IMPORTANT INSTRUCTIONS:
     try {
       const conversationHistory = [
         { role: "system", content: systemPrompt },
-        ...messages.map((m) => ({ role: m.role, content: m.content })),
+        ...messages.map((m) => ({ role: m.role, content: m.content || "" })),
         { role: "user", content: transcribedText },
       ]
 
@@ -180,7 +184,7 @@ IMPORTANT INSTRUCTIONS:
       const data = await response.json()
       const assistantMessage: Message = {
         role: "assistant",
-        content: data.message,
+        content: data.message || "",
         timestamp: new Date(),
       }
 
@@ -193,7 +197,7 @@ IMPORTANT INSTRUCTIONS:
   }
 
   const sendMessage = async () => {
-    if (!input.trim() || isLoading) return
+    if (!input || typeof input !== "string" || !input.trim() || isLoading) return
 
     if (messageCountInCredit >= 20) {
       setShowCreditWarning(true)
@@ -214,7 +218,7 @@ IMPORTANT INSTRUCTIONS:
     try {
       const conversationHistory = [
         { role: "system", content: systemPrompt },
-        ...messages.map((m) => ({ role: m.role, content: m.content })),
+        ...messages.map((m) => ({ role: m.role, content: m.content || "" })),
         { role: "user", content: messageText },
       ]
 
@@ -229,7 +233,7 @@ IMPORTANT INSTRUCTIONS:
       const data = await response.json()
       const assistantMessage: Message = {
         role: "assistant",
-        content: data.message,
+        content: data.message || "",
         timestamp: new Date(),
       }
 
@@ -237,7 +241,6 @@ IMPORTANT INSTRUCTIONS:
 
       setMessageCountInCredit((prev) => {
         const newCount = prev + 1
-        // Show warning at 18 messages (2 messages left)
         if (newCount >= 18) {
           setShowCreditWarning(true)
         }
@@ -258,7 +261,12 @@ IMPORTANT INSTRUCTIONS:
       setIsRecording(false)
     } else {
       setIsRecording(true)
-      recognitionRef.current.start()
+      try {
+        recognitionRef.current.start()
+      } catch (error) {
+        console.error("[v0] Error starting recording:", error)
+        setIsRecording(false)
+      }
     }
   }
 
@@ -288,7 +296,7 @@ IMPORTANT INSTRUCTIONS:
       setMessages([
         {
           role: "assistant",
-          content: data.message,
+          content: data.message || "",
           timestamp: new Date(),
         },
       ])
@@ -305,14 +313,24 @@ IMPORTANT INSTRUCTIONS:
     }
   }
 
+  const speakMessage = (content: string) => {
+    if (!content || typeof content !== "string") return
+    
+    try {
+      const utterance = new SpeechSynthesisUtterance(content)
+      utterance.lang = language?.code || "en-US"
+      speechSynthesis.speak(utterance)
+    } catch (error) {
+      console.error("[v0] Error speaking message:", error)
+    }
+  }
+
   if (!scenario || !language) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="text-center">
           <h1 className="text-2xl font-bold mb-4">Cenário não encontrado</h1>
-          <Link href="/scenarios">
-            <Button>Voltar aos Cenários</Button>
-          </Link>
+          <Button onClick={() => window.location.href = '/scenarios'}>Voltar aos Cenários</Button>
         </div>
       </div>
     )
@@ -323,9 +341,12 @@ IMPORTANT INSTRUCTIONS:
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-10">
         <div className="flex items-center justify-between px-3 py-3 sm:px-4 sm:py-4">
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            <Link href="/dashboard" className="text-zinc-400 hover:text-zinc-200 transition-colors flex-shrink-0">
+            <button 
+              onClick={() => window.location.href = '/dashboard'}
+              className="text-zinc-400 hover:text-zinc-200 transition-colors flex-shrink-0"
+            >
               <ArrowLeft className="h-5 w-5 sm:h-6 sm:w-6" />
-            </Link>
+            </button>
             <div className="min-w-0 flex-1">
               <h1 className="font-semibold text-sm sm:text-base text-white truncate">{scenario.title}</h1>
               <p className="text-xs text-zinc-400 truncate">
@@ -376,8 +397,12 @@ IMPORTANT INSTRUCTIONS:
               {userCredits === 0 && (
                 <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
                   <p className="text-sm text-destructive font-medium mb-2">Sem créditos disponíveis</p>
-                  <Button variant="outline" size="sm" asChild>
-                    <Link href="/buy-credits">Comprar Créditos</Link>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => window.location.href = '/buy-credits'}
+                  >
+                    Comprar Créditos
                   </Button>
                 </div>
               )}
@@ -397,9 +422,12 @@ IMPORTANT INSTRUCTIONS:
               <div className="bg-destructive/10 border-b border-destructive/20 px-4 py-3">
                 <p className="text-sm text-destructive text-center font-medium">
                   Limite de 20 mensagens atingido!
-                  <Link href="/buy-credits" className="underline ml-1">
+                  <button 
+                    onClick={() => window.location.href = '/buy-credits'}
+                    className="underline ml-1 hover:text-destructive/80"
+                  >
                     Compre mais créditos
-                  </Link>
+                  </button>
                 </p>
               </div>
             )}
@@ -423,24 +451,20 @@ IMPORTANT INSTRUCTIONS:
                     {message.role === "assistant" && (
                       <div className="flex items-center gap-2 px-3 pt-2 pb-1 border-b border-zinc-800">
                         <div className="w-6 h-6 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                          <span className="text-xs font-semibold text-primary">{scenario.character[0]}</span>
+                          <span className="text-xs font-semibold text-primary">{scenario.character?.[0] || "?"}</span>
                         </div>
                         <span className="text-xs font-medium text-zinc-300">{scenario.character}</span>
                       </div>
                     )}
                     <div className="px-3 py-2">
                       <p className="text-sm sm:text-base leading-relaxed whitespace-pre-wrap break-words">
-                        {message.content}
+                        {message.content || ""}
                       </p>
                       <div className="flex items-center justify-between mt-1.5 gap-2">
                         {message.role === "assistant" && (
                           <button
                             className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors flex items-center gap-1"
-                            onClick={() => {
-                              const utterance = new SpeechSynthesisUtterance(message.content)
-                              utterance.lang = language.code
-                              speechSynthesis.speak(utterance)
-                            }}
+                            onClick={() => speakMessage(message.content)}
                           >
                             <Volume2 className="h-3 w-3" />
                             Ouvir
@@ -480,7 +504,7 @@ IMPORTANT INSTRUCTIONS:
                   <input
                     type="text"
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
+                    onChange={(e) => setInput(e.target.value || "")}
                     onKeyDown={handleKeyPress}
                     placeholder={`Mensagem em ${language.name}...`}
                     className="flex-1 bg-transparent text-sm sm:text-base text-zinc-100 placeholder:text-zinc-500 outline-none"

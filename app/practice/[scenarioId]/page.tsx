@@ -134,52 +134,53 @@ IMPORTANT INSTRUCTIONS:
   }, [messages])
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-      if (SpeechRecognition) {
-        setSpeechSupported(true)
-        const recognition = new SpeechRecognition()
+  if (typeof window === "undefined") return;
+  if (!scenario || !language) return; // ✅ proteção extra
 
-        recognition.lang = language?.code || "en-US"
-        recognition.continuous = false
-        recognition.interimResults = false
-        recognition.maxAlternatives = 1
+  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+  if (!SpeechRecognition) return;
 
-        recognition.onresult = (event: any) => {
-          try {
-            const result = event.results?.[0]?.[0]
-            const transcript = result?.transcript
-            
-            if (transcript && typeof transcript === "string" && transcript.trim().length > 0) {
-              const cleanTranscript = String(transcript).trim()
-              console.log("[v0] Audio transcribed:", cleanTranscript)
-              setInput(cleanTranscript)
-              setTimeout(() => {
-                handleSendAfterTranscription(cleanTranscript)
-              }, 100)
-            } else {
-              console.log("Invalid or empty transcript")
-            }
-          } catch (error) {
-            console.error("Error processing speech result:", error)
-            setIsRecording(false)
-          }
-        }
+  setSpeechSupported(true);
+  const recognition = new SpeechRecognition();
 
-        recognition.onerror = (event: any) => {
-          console.error("[v0] Speech recognition error:", event.error)
-          setIsRecording(false)
-        }
+  recognition.lang = language.code; // agora language é garantido
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
 
-        recognition.onend = () => {
-          console.log("[v0] Recording ended")
-          setIsRecording(false)
-        }
+  recognition.onresult = (event: any) => {
+    try {
+      const result = event.results?.[0]?.[0];
+      const transcript = result?.transcript;
 
-        recognitionRef.current = recognition
+      if (transcript && typeof transcript === "string" && transcript.trim().length > 0) {
+        const cleanTranscript = transcript.trim();
+        console.log("[v0] Audio transcribed:", cleanTranscript);
+        setInput(cleanTranscript);
+        setTimeout(() => {
+          handleSendAfterTranscription(cleanTranscript);
+        }, 100);
+      } else {
+        console.log("Invalid or empty transcript");
       }
+    } catch (error) {
+      console.error("Error processing speech result:", error);
+      setIsRecording(false);
     }
-  }, [scenario, language])
+  };
+
+  recognition.onerror = (event: any) => {
+    console.error("[v0] Speech recognition error:", event.error);
+    setIsRecording(false);
+  };
+
+  recognition.onend = () => {
+    console.log("[v0] Recording ended");
+    setIsRecording(false);
+  };
+
+  recognitionRef.current = recognition;
+}, [scenario, language]);
 
   const handleSendAfterTranscription = async (transcribedText: string) => {
     // Validação rigorosa do texto

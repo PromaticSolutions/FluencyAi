@@ -15,10 +15,10 @@ export async function POST(req: Request) {
     }
 
     const { text } = await generateText({
-      model: "openai/gpt-4o-mini",
+      model: "gpt-4o-mini",
       messages,
       temperature: 0.7,
-      maxTokens: 500,
+      maxOutputTokens: 500,
     })
 
     return Response.json({

@@ -61,10 +61,28 @@ interface Message {
 }
 
 export default function PracticePage() {
-  // Simular params da URL - você precisará adaptar isso para seu roteamento real
-  const urlParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
-  const scenarioId = typeof window !== 'undefined' ? window.location.pathname.split('/').pop() || "" : ""
-  const languageId = urlParams.get("language") || "english"
+  // Simular params da URL com proteções robustas
+  const [scenarioId, setScenarioId] = useState("")
+  const [languageId, setLanguageId] = useState("english")
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const pathname = window.location?.pathname || ""
+        const pathParts = pathname.split('/').filter(Boolean)
+        const lastPart = pathParts[pathParts.length - 1] || ""
+        setScenarioId(lastPart)
+        
+        const searchParams = new URLSearchParams(window.location?.search || "")
+        const lang = searchParams.get("language")
+        if (lang && typeof lang === "string") {
+          setLanguageId(lang)
+        }
+      } catch (error) {
+        console.error("Error parsing URL:", error)
+      }
+    }
+  }, [])
 
   const scenario = scenarioData[scenarioId]
   const language = languageConfig[languageId]
@@ -128,13 +146,23 @@ IMPORTANT INSTRUCTIONS:
         recognition.maxAlternatives = 1
 
         recognition.onresult = (event: any) => {
-          const transcript = event.results?.[0]?.[0]?.transcript
-          if (transcript && typeof transcript === "string") {
-            console.log("[v0] Audio transcribed:", transcript)
-            setInput(transcript)
-            setTimeout(() => {
-              handleSendAfterTranscription(transcript)
-            }, 100)
+          try {
+            const result = event.results?.[0]?.[0]
+            const transcript = result?.transcript
+            
+            if (transcript && typeof transcript === "string" && transcript.trim().length > 0) {
+              const cleanTranscript = String(transcript).trim()
+              console.log("[v0] Audio transcribed:", cleanTranscript)
+              setInput(cleanTranscript)
+              setTimeout(() => {
+                handleSendAfterTranscription(cleanTranscript)
+              }, 100)
+            } else {
+              console.log("Invalid or empty transcript")
+            }
+          } catch (error) {
+            console.error("Error processing speech result:", error)
+            setIsRecording(false)
           }
         }
 
@@ -154,11 +182,20 @@ IMPORTANT INSTRUCTIONS:
   }, [scenario, language])
 
   const handleSendAfterTranscription = async (transcribedText: string) => {
-    if (!transcribedText || typeof transcribedText !== "string" || !transcribedText.trim() || isLoading) return
+    // Validação rigorosa do texto
+    if (!transcribedText || 
+        typeof transcribedText !== "string" || 
+        transcribedText.trim().length === 0 || 
+        isLoading) {
+      console.log("Invalid transcription, skipping")
+      return
+    }
 
+    const cleanText = String(transcribedText).trim()
+    
     const userMessage: Message = {
       role: "user",
-      content: transcribedText,
+      content: cleanText,
       timestamp: new Date(),
     }
 
@@ -168,9 +205,12 @@ IMPORTANT INSTRUCTIONS:
 
     try {
       const conversationHistory = [
-        { role: "system", content: systemPrompt },
-        ...messages.map((m) => ({ role: m.role, content: m.content || "" })),
-        { role: "user", content: transcribedText },
+        { role: "system", content: String(systemPrompt || "") },
+        ...messages.map((m) => ({ 
+          role: m.role, 
+          content: String(m.content || "") 
+        })),
+        { role: "user", content: cleanText },
       ]
 
       const response = await fetch("/api/chat", {
@@ -184,7 +224,7 @@ IMPORTANT INSTRUCTIONS:
       const data = await response.json()
       const assistantMessage: Message = {
         role: "assistant",
-        content: data.message || "",
+        content: String(data.message || ""),
         timestamp: new Date(),
       }
 
@@ -197,29 +237,40 @@ IMPORTANT INSTRUCTIONS:
   }
 
   const sendMessage = async () => {
-    if (!input || typeof input !== "string" || !input.trim() || isLoading) return
+    // Validação rigorosa do input
+    if (!input || 
+        typeof input !== "string" || 
+        input.trim().length === 0 || 
+        isLoading) {
+      console.log("Invalid input, skipping")
+      return
+    }
 
     if (messageCountInCredit >= 20) {
       setShowCreditWarning(true)
       return
     }
 
+    const cleanInput = String(input).trim()
+
     const userMessage: Message = {
       role: "user",
-      content: input,
+      content: cleanInput,
       timestamp: new Date(),
     }
 
     setMessages((prev) => [...prev, userMessage])
-    const messageText = input
     setInput("")
     setIsLoading(true)
 
     try {
       const conversationHistory = [
-        { role: "system", content: systemPrompt },
-        ...messages.map((m) => ({ role: m.role, content: m.content || "" })),
-        { role: "user", content: messageText },
+        { role: "system", content: String(systemPrompt || "") },
+        ...messages.map((m) => ({ 
+          role: m.role, 
+          content: String(m.content || "") 
+        })),
+        { role: "user", content: cleanInput },
       ]
 
       const response = await fetch("/api/chat", {
@@ -233,7 +284,7 @@ IMPORTANT INSTRUCTIONS:
       const data = await response.json()
       const assistantMessage: Message = {
         role: "assistant",
-        content: data.message || "",
+        content: String(data.message || ""),
         timestamp: new Date(),
       }
 
@@ -314,11 +365,22 @@ IMPORTANT INSTRUCTIONS:
   }
 
   const speakMessage = (content: string) => {
-    if (!content || typeof content !== "string") return
+    // Validação rigorosa antes de falar
+    if (!content || typeof content !== "string" || content.trim().length === 0) {
+      console.log("Invalid content for speech")
+      return
+    }
     
     try {
-      const utterance = new SpeechSynthesisUtterance(content)
+      const cleanContent = String(content).trim()
+      const utterance = new SpeechSynthesisUtterance(cleanContent)
       utterance.lang = language?.code || "en-US"
+      
+      // Adicionar handlers de erro
+      utterance.onerror = (event) => {
+        console.error("Speech synthesis error:", event)
+      }
+      
       speechSynthesis.speak(utterance)
     } catch (error) {
       console.error("[v0] Error speaking message:", error)
@@ -503,10 +565,13 @@ IMPORTANT INSTRUCTIONS:
                 <div className="flex-1 bg-zinc-800 rounded-full px-4 py-2.5 flex items-center gap-2 border border-zinc-700">
                   <input
                     type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value || "")}
+                    value={input || ""}
+                    onChange={(e) => {
+                      const value = e.target?.value
+                      setInput(typeof value === "string" ? value : "")
+                    }}
                     onKeyDown={handleKeyPress}
-                    placeholder={`Mensagem em ${language.name}...`}
+                    placeholder={`Mensagem em ${language?.name || ""}...`}
                     className="flex-1 bg-transparent text-sm sm:text-base text-zinc-100 placeholder:text-zinc-500 outline-none"
                     disabled={isLoading || isRecording || messageCountInCredit >= 20}
                   />

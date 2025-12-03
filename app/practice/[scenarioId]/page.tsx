@@ -217,7 +217,7 @@ IMPORTANT INSTRUCTIONS:
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: conversationHistory }),
+        body: JSON.stringify({ messages: conversationHistory, scenarioId, language: languageId }),
       })
 
       if (!response.ok) throw new Error("Failed to send message")
@@ -277,7 +277,7 @@ IMPORTANT INSTRUCTIONS:
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: conversationHistory }),
+        body: JSON.stringify({ messages: conversationHistory, scenarioId, language: languageId }),
       })
 
       if (!response.ok) throw new Error("Failed to send message")
@@ -339,6 +339,8 @@ IMPORTANT INSTRUCTIONS:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: [{ role: "system", content: systemPrompt }],
+          scenarioId,
+          language: languageId,
         }),
       })
 

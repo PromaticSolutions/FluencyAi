@@ -1,9 +1,10 @@
-import { ArrowLeft, Globe, Sparkles } from "lucide-react"
+import { ArrowLeft, Globe, Lock, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
+import { getPlanById } from "@/lib/products"
 
 const scenarios: Record<string, any> = {
   "meeting-friend": {
@@ -49,17 +50,16 @@ const scenarios: Record<string, any> = {
 }
 
 const languages = [
-  { id: "english", name: "Inglês", flag: "🇺🇸", code: "en-US" },
-  { id: "spanish", name: "Espanhol", flag: "🇪🇸", code: "es-ES" },
-  { id: "french", name: "Francês", flag: "🇫🇷", code: "fr-FR" },
+  { id: "english", name: "Inglês", flag: "🇺🇸", code: "en-US", languageCode: "en" },
+  { id: "spanish", name: "Espanhol", flag: "🇪🇸", code: "es-ES", languageCode: "es" },
+  { id: "french", name: "Francês", flag: "🇫🇷", code: "fr-FR", languageCode: "fr" },
 ]
 
 export default async function SelectLanguagePage({ 
   params 
 }: { 
-  params: Promise<{ scenarioId: string }> // ✅ Next.js 15+ usa Promise
+  params: Promise<{ scenarioId: string }>
 }) {
-  // ✅ Await nos params (Next.js 15+)
   const resolvedParams = await params
   
   const supabase = await createClient()
@@ -72,19 +72,26 @@ export default async function SelectLanguagePage({
     redirect("/login")
   }
 
-  const { data: userProfile } = await supabase.from("users").select("credits").eq("id", user.id).single()
+  const { data: userProfile } = await supabase.from("users").select("credits, plan_id").eq("id", user.id).single()
 
   const userCredits = userProfile?.credits || 0
+  const userPlanId = userProfile?.plan_id || "free"
+  const userPlan = getPlanById(userPlanId)
   
-  // ✅ Debug: ver o que está vindo
   console.log("scenarioId recebido:", resolvedParams.scenarioId)
   console.log("scenarios disponíveis:", Object.keys(scenarios))
+  console.log("userPlan:", userPlan)
   
   const scenario = scenarios[resolvedParams.scenarioId]
 
   if (!scenario) {
     console.log("Cenário não encontrado, redirecionando...")
     redirect("/dashboard")
+  }
+
+  const isLanguageUnlocked = (languageCode: string): boolean => {
+    if (!userPlan) return false
+    return userPlan.languages.includes(languageCode as "en" | "es" | "fr")
   }
 
   return (
@@ -132,24 +139,56 @@ export default async function SelectLanguagePage({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 md:gap-6 max-w-3xl mx-auto">
-          {languages.map((language) => (
-            <Link key={language.id} href={`/practice/${resolvedParams.scenarioId}?language=${language.id}`}>
-              <Card className="hover:border-primary/50 hover:shadow-lg transition-all duration-300 cursor-pointer group h-full">
-                <CardHeader className="text-center pb-3">
-                  <div className="text-4xl md:text-5xl mb-3 group-hover:scale-110 transition-transform">
-                    {language.flag}
-                  </div>
-                  <CardTitle className="text-lg md:text-xl">{language.name}</CardTitle>
-                  <CardDescription className="text-xs">Código: {language.code}</CardDescription>
-                </CardHeader>
-                <CardContent className="pt-0">
-                  <Button className="w-full" variant="secondary" size="sm">
-                    Praticar
-                  </Button>
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
+          {languages.map((language) => {
+            const isUnlocked = isLanguageUnlocked(language.languageCode)
+            
+            return (
+              <div key={language.id}>
+                {isUnlocked ? (
+                  <Link href={`/practice/${resolvedParams.scenarioId}?language=${language.id}`}>
+                    <Card className="hover:border-primary/50 hover:shadow-lg transition-all duration-300 cursor-pointer group h-full">
+                      <CardHeader className="text-center pb-3">
+                        <div className="text-4xl md:text-5xl mb-3 group-hover:scale-110 transition-transform">
+                          {language.flag}
+                        </div>
+                        <CardTitle className="text-lg md:text-xl">{language.name}</CardTitle>
+                        <CardDescription className="text-xs">Código: {language.code}</CardDescription>
+                      </CardHeader>
+                      <CardContent className="pt-0">
+                        <Button className="w-full" variant="secondary" size="sm">
+                          Praticar
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Link>
+                ) : (
+                  <Card className="h-full relative overflow-hidden opacity-60 hover:opacity-80 transition-opacity">
+                    <div className="absolute inset-0 bg-black/40 z-10 flex items-center justify-center">
+                      <div className="text-center">
+                        <Lock className="h-8 w-8 text-white mx-auto mb-2" />
+                        <p className="text-white text-sm font-medium">Bloqueado</p>
+                      </div>
+                    </div>
+                    
+                    <CardHeader className="text-center pb-3">
+                      <div className="text-4xl md:text-5xl mb-3">
+                        {language.flag}
+                      </div>
+                      <CardTitle className="text-lg md:text-xl">{language.name}</CardTitle>
+                      <CardDescription className="text-xs">Código: {language.code}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <Link href="/buy-credits" className="block">
+                        <Button className="w-full" variant="outline" size="sm">
+                          Desbloquear
+                        </Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )
+          })}
         </div>
       </main>
     </div>

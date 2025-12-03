@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import Checkout from '@/components/checkout'
-import { PRODUCTS } from '@/lib/products'
+import { PLANS } from '@/lib/products'
 
 export default function BuyCreditsPage() {
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null)
@@ -54,42 +54,44 @@ export default function BuyCreditsPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 max-w-4xl mx-auto">
-            {PRODUCTS.map((product) => (
+            {PLANS.filter(p => p.priceInCents !== 0).map((plan) => (
               <Card
-                key={product.id}
+                key={plan.id}
                 className={`p-6 md:p-8 relative overflow-hidden transition-all hover:shadow-xl ${
-                  product.popular ? 'border-primary border-2' : ''
+                  plan.popular ? 'border-primary border-2' : ''
                 }`}
               >
-                {product.popular && (
+                {plan.popular && (
                   <div className="absolute top-0 right-0 bg-primary text-primary-foreground px-3 md:px-4 py-1 text-xs md:text-sm font-semibold">
                     Mais Popular
                   </div>
                 )}
 
                 <div className="mb-6">
-                  <h3 className="text-xl md:text-2xl font-bold mb-2">{product.name}</h3>
+                  <h3 className="text-xl md:text-2xl font-bold mb-2">{plan.name}</h3>
                   <p className="text-muted-foreground text-sm mb-4">
-                    {product.description}
+                    {plan.description}
                   </p>
                   
                   <div className="flex items-baseline gap-2">
                     <span className="text-3xl md:text-4xl font-bold">
-                      R$ {(product.priceInCents / 100).toFixed(2).replace('.', ',')}
+                      R$ {(plan.priceInCents! / 100).toFixed(2).replace('.', ',')}
                     </span>
                   </div>
                   
                   <div className="mt-4 flex items-center gap-2 text-base md:text-lg">
                     <Sparkles className="h-5 w-5 text-primary shrink-0" />
-                    <span className="font-semibold">{product.credits} créditos</span>
+                    <span className="font-semibold">
+                      {plan.credits !== null ? `${plan.credits} créditos` : "Créditos Ilimitados"}
+                    </span>
                   </div>
                 </div>
 
                 <Button
                   className="w-full"
                   size="lg"
-                  variant={product.popular ? 'default' : 'outline'}
-                  onClick={() => setSelectedProductId(product.id)}
+                  variant={plan.popular ? 'default' : 'outline'}
+                  onClick={() => setSelectedProductId(plan.id)}
                 >
                   Comprar Agora
                 </Button>
@@ -97,19 +99,19 @@ export default function BuyCreditsPage() {
                 <div className="mt-6 space-y-2">
                   <div className="flex items-center gap-2 text-sm">
                     <Check className="h-4 w-4 text-primary shrink-0" />
-                    <span>Conversas ilimitadas por crédito</span>
+                    <span>{plan.messageLimit !== null ? `${plan.messageLimit} mensagens no total` : "Mensagens Ilimitadas"}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <Check className="h-4 w-4 text-primary shrink-0" />
-                    <span>Acesso a todos os cenários</span>
+                    <span>{plan.scenarios.length} cenários liberados</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <Check className="h-4 w-4 text-primary shrink-0" />
-                    <span>Créditos nunca expiram</span>
+                    <span>{plan.id !== 'free' ? "Créditos nunca expiram" : "Créditos expiram"}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <Check className="h-4 w-4 text-primary shrink-0" />
-                    <span>Suporte a múltiplos idiomas</span>
+                    <span>Suporte a {plan.languages.length} idiomas</span>
                   </div>
                 </div>
               </Card>

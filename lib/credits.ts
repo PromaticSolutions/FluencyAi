@@ -1,8 +1,9 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
+import { PLANS, getPlanById } from "./products" // Importar a nova estrutura de planos
 
-export async function getCredits(): Promise<{ credits: number; message_count: number }> {
+export async function getCredits(): Promise<{ credits: number; total_messages_sent: number }> {
   const supabase = await createClient()
 
   const {
@@ -10,14 +11,14 @@ export async function getCredits(): Promise<{ credits: number; message_count: nu
   } = await supabase.auth.getUser()
 
   if (!user) {
-    return { credits: 0, message_count: 0 }
+    return { credits: 0, total_messages_sent: 0 }
   }
 
-  const { data: userProfile } = await supabase.from("users").select("credits, message_count").eq("id", user.id).single()
+  const { data: userProfile } = await supabase.from("users").select("credits, total_messages_sent").eq("id", user.id).single()
 
   return {
     credits: userProfile?.credits || 0,
-    message_count: userProfile?.message_count || 0,
+    total_messages_sent: userProfile?.total_messages_sent || 0,
   }
 }
 
@@ -43,8 +44,8 @@ export async function addCredits(amount: number): Promise<number> {
 export async function trackMessage(): Promise<{
   success: boolean
   remainingCredits: number
-  messageCount: number
-  creditDeducted: boolean
+  totalMessagesSent: number
+  planId: string
 }> {
   const supabase = await createClient()
 
@@ -53,61 +54,50 @@ export async function trackMessage(): Promise<{
   } = await supabase.auth.getUser()
 
   if (!user) {
-    return { success: false, remainingCredits: 0, messageCount: 0, creditDeducted: false }
+    return { success: false, remainingCredits: 0, totalMessagesSent: 0, planId: "free" }
   }
 
-  const { data: userProfile } = await supabase.from("users").select("credits, message_count").eq("id", user.id).single()
+  const { data: userProfile } = await supabase.from("users").select("credits, total_messages_sent, plan_id").eq("id", user.id).single()
 
   if (!userProfile) {
-    return { success: false, remainingCredits: 0, messageCount: 0, creditDeducted: false }
+    return { success: false, remainingCredits: 0, totalMessagesSent: 0, planId: "free" }
   }
 
   const currentCredits = userProfile.credits || 0
-  const currentMessageCount = userProfile.message_count || 0
+  const totalMessagesSent = userProfile.total_messages_sent || 0
+  const planId = userProfile.plan_id || "free"
+  const userPlan = getPlanById(planId) || PLANS[0] // Assume PLANS[0] é o plano gratuito
 
-  // Check if user has credits
-  if (currentCredits <= 0 && currentMessageCount >= 20) {
+  // 1. Verificar limite de mensagens do plano (se não for ilimitado)
+  if (userPlan.messageLimit !== null && totalMessagesSent >= userPlan.messageLimit) {
     return {
       success: false,
-      remainingCredits: 0,
-      messageCount: currentMessageCount,
-      creditDeducted: false,
+      remainingCredits: currentCredits,
+      totalMessagesSent: totalMessagesSent,
+      planId,
     }
   }
 
-  const newMessageCount = currentMessageCount + 1
-  let newCredits = currentCredits
-  let creditDeducted = false
+  // 2. Incrementar total de mensagens enviadas
+  const newTotalMessagesSent = totalMessagesSent + 1
 
-  // If reached 20 messages, deduct a credit and reset counter
-  if (newMessageCount >= 20 && currentCredits > 0) {
-    newCredits = currentCredits - 1
-    creditDeducted = true
+  // 3. Atualizar o perfil do usuário
+  await supabase
+    .from("users")
+    .update({
+      // Créditos não são deduzidos aqui, apenas o contador de mensagens é atualizado
+      total_messages_sent: userPlan.messageLimit !== null ? newTotalMessagesSent : null, // Se ilimitado, mantém null
+    })
+    .eq("id", user.id)
 
-    await supabase
-      .from("users")
-      .update({
-        credits: newCredits,
-        message_count: 0, // Reset message count after deducting credit
-      })
-      .eq("id", user.id)
+  // 4. Verificar se o novo total atingiu o limite (para a próxima requisição)
+  const isLimitReached = userPlan.messageLimit !== null && newTotalMessagesSent >= userPlan.messageLimit
 
-    return {
-      success: true,
-      remainingCredits: newCredits,
-      messageCount: 0,
-      creditDeducted: true,
-    }
-  } else {
-    // Just increment message count
-    await supabase.from("users").update({ message_count: newMessageCount }).eq("id", user.id)
-
-    return {
-      success: true,
-      remainingCredits: newCredits,
-      messageCount: newMessageCount,
-      creditDeducted: false,
-    }
+  return {
+    success: !isLimitReached,
+    remainingCredits: userPlan.credits !== null ? currentCredits : 0, // Retorna 0 se ilimitado
+    totalMessagesSent: userPlan.messageLimit !== null ? newTotalMessagesSent : 0, // Retorna 0 se ilimitado
+    planId,
   }
 }
 
@@ -123,6 +113,14 @@ export async function deductCredit(): Promise<{ success: boolean; remainingCredi
   }
 
   const { credits } = await getCredits()
+  const { data: userProfile } = await supabase.from("users").select("plan_id").eq("id", user.id).single()
+  const planId = userProfile?.plan_id || "free"
+  const userPlan = getPlanById(planId) || PLANS[0]
+
+  if (userPlan.credits === null) {
+    // Plano ilimitado, não deduz crédito
+    return { success: true, remainingCredits: 0 }
+  }
 
   if (credits <= 0) {
     return { success: false, remainingCredits: 0 }

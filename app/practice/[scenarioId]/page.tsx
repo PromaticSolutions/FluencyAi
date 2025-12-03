@@ -337,11 +337,7 @@ IMPORTANT INSTRUCTIONS:
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            messages: messages, // ou [{ role: "system", content: systemPrompt }]
-             scenarioId, // Adicionado
-             language: languageId, // Adicionado
-          }),
+        body: JSON.stringify({ messages: messages, scenarioId, language: languageId }),
       })
 
       if (!response.ok) throw new Error("Failed to start conversation")

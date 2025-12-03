@@ -338,10 +338,10 @@ IMPORTANT INSTRUCTIONS:
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: [{ role: "system", content: systemPrompt }],
-          scenarioId,
-          language: languageId,
-        }),
+            messages: messages, // ou [{ role: "system", content: systemPrompt }]
+             scenarioId, // Adicionado
+             language: languageId, // Adicionado
+          }),
       })
 
       if (!response.ok) throw new Error("Failed to start conversation")

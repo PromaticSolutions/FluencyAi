@@ -1,7 +1,7 @@
 import { Hero } from "@/components/hero"
 import { Scenarios } from "@/components/scenarios"
 import { Features } from "@/components/features"
-import { Pricing } from "@/components/pricing"
+import  Pricing  from "@/components/pricing"
 import { CTA } from "@/components/cta"
 import { Header } from "@/components/header"
 

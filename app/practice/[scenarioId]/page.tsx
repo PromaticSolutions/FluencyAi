@@ -55,10 +55,11 @@ const scenarioData: Record<string, any> = {
   },
 }
 
+// CORREÇÃO APLICADA AQUI: Adicionado planCode para mapeamento correto
 const languageConfig: Record<string, any> = {
-  english: { name: "Inglês", code: "en-US", nativeName: "English" },
-  spanish: { name: "Espanhol", code: "es-ES", nativeName: "Español" },
-  french: { name: "Francês", code: "fr-FR", nativeName: "Français" },
+  english: { name: "Inglês", code: "en-US", nativeName: "English", planCode: "en" },
+  spanish: { name: "Espanhol", code: "es-ES", nativeName: "Español", planCode: "es" },
+  french: { name: "Francês", code: "fr-FR", nativeName: "Français", planCode: "fr" },
 }
 
 interface Message {
@@ -156,7 +157,9 @@ export default function PracticePage() {
   
   // ✅ MELHORIA 2: Validação antes de montar reconhecimento de voz
   const isScenarioAllowed = allowedScenarios?.includes(scenarioId) ?? false
-  const isLanguageAllowed = allowedLanguages?.includes(languageId) ?? false
+  // CORREÇÃO APLICADA AQUI: Usa o planCode para a validação
+  const languagePlanCode = languageConfig[languageId]?.planCode
+  const isLanguageAllowed = allowedLanguages?.includes(languagePlanCode) ?? false
 
   useEffect(() => {
     if (typeof window === "undefined") return

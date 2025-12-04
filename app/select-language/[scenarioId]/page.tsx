@@ -61,37 +61,44 @@ export default async function SelectLanguagePage({
   params: Promise<{ scenarioId: string }>
 }) {
   const resolvedParams = await params
-  
+  const scenarioId = resolvedParams.scenarioId
+
   const supabase = await createClient()
 
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  if (!user) {
-    redirect("/login")
-  }
+  if (!user) redirect("/login")
 
-  const { data: userProfile } = await supabase.from("users").select("credits, plan_id").eq("id", user.id).single()
+  const { data: userProfile } = await supabase
+    .from("users")
+    .select("credits, plan_id")
+    .eq("id", user.id)
+    .single()
 
   const userCredits = userProfile?.credits || 0
   const userPlanId = userProfile?.plan_id || "free"
   const userPlan = getPlanById(userPlanId)
-  
-  console.log("scenarioId recebido:", resolvedParams.scenarioId)
-  console.log("scenarios disponíveis:", Object.keys(scenarios))
-  console.log("userPlan:", userPlan)
-  
-  const scenario = scenarios[resolvedParams.scenarioId]
 
-  if (!scenario) {
-    console.log("Cenário não encontrado, redirecionando...")
-    redirect("/dashboard")
+  console.log("scenarioId recebido:", scenarioId)
+  console.log("cenários liberados no plano:", userPlan?.scenarios)
+  
+  const scenario = scenarios[scenarioId]
+
+  if (!scenario) redirect("/dashboard")
+
+  // 🚨 NOVO: checar se o cenário está permitido pelo plano
+  const scenarioAllowed = userPlan?.scenarios.includes(scenarioId)
+
+  if (!scenarioAllowed) {
+    console.log("Cenário bloqueado pelo plano. Redirecionando…")
+    redirect("/upgrade")
   }
 
+  // Liberação de idioma (já estava certo)
   const isLanguageUnlocked = (languageCode: string): boolean => {
-    if (!userPlan) return false
-    return userPlan.languages.includes(languageCode as "en" | "es" | "fr")
+    return userPlan?.languages.includes(languageCode as "en" | "es" | "fr") ?? false
   }
 
   return (
@@ -145,7 +152,7 @@ export default async function SelectLanguagePage({
             return (
               <div key={language.id}>
                 {isUnlocked ? (
-                  <Link href={`/practice/${resolvedParams.scenarioId}?language=${language.id}`}>
+                  <Link href={`/practice/${scenarioId}?language=${language.id}`}>
                     <Card className="hover:border-primary/50 hover:shadow-lg transition-all duration-300 cursor-pointer group h-full">
                       <CardHeader className="text-center pb-3">
                         <div className="text-4xl md:text-5xl mb-3 group-hover:scale-110 transition-transform">

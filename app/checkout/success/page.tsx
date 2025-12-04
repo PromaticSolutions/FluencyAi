@@ -81,7 +81,7 @@ export default function CheckoutSuccessPage() {
           +{credits} créditos
         </p>
         <Button 
-          onClick={() => router.push('/scenarios')}
+          onClick={() => router.push('/dashboard')}
           size="lg"
           className="w-full"
         >

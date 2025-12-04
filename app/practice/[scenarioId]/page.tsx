@@ -1,47 +1,54 @@
 "use client"
 import type { KeyboardEvent } from "react"
-
 import { useState, useRef, useEffect } from "react"
 import { ArrowLeft, Mic, Volume2, Loader2, Send, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 const scenarioData: Record<string, any> = {
   "meeting-friend": {
+    id: "meeting-friend",
     title: "Conhecendo Alguém",
     character: "Alex",
     characterRole: "Novo amigo/amiga",
   },
   restaurant: {
+    id: "restaurant",
     title: "Restaurante",
     character: "Taylor",
     characterRole: "Garçom/Garçonete",
   },
   "job-interview": {
+    id: "job-interview",
     title: "Entrevista de Emprego",
     character: "Jordan",
     characterRole: "Recrutador",
   },
   airport: {
+    id: "airport",
     title: "Aeroporto",
     character: "Sam",
     characterRole: "Atendente do aeroporto",
   },
   supermarket: {
+    id: "supermarket",
     title: "Mercado",
     character: "Chris",
     characterRole: "Funcionário do mercado",
   },
   "clothing-store": {
+    id: "clothing-store",
     title: "Loja de Roupa",
     character: "Morgan",
     characterRole: "Vendedor(a)",
   },
   pharmacy: {
+    id: "pharmacy",
     title: "Farmácia",
     character: "Dr. Lee",
     characterRole: "Farmacêutico",
   },
   office: {
+    id: "office",
     title: "Escritório de Empresa",
     character: "Pat",
     characterRole: "Colega de trabalho",
@@ -61,42 +68,12 @@ interface Message {
 }
 
 export default function PracticePage() {
-  // Simular params da URL com proteções robustas
   const [scenarioId, setScenarioId] = useState("")
   const [languageId, setLanguageId] = useState("english")
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const pathname = window.location?.pathname || ""
-        const pathParts = pathname.split('/').filter(Boolean)
-        const lastPart = pathParts[pathParts.length - 1] || ""
-        setScenarioId(lastPart)
-        
-        const searchParams = new URLSearchParams(window.location?.search || "")
-        const lang = searchParams.get("language")
-        if (lang && typeof lang === "string") {
-          setLanguageId(lang)
-        }
-      } catch (error) {
-        console.error("Error parsing URL:", error)
-      }
-    }
-  }, [])
-
-  const scenario = scenarioData[scenarioId]
-  const language = languageConfig[languageId]
-
-  // Proteção adicional para evitar undefined
-  const systemPrompt = scenario && language ? `You are ${scenario.character}, a friendly ${scenario.characterRole} helping a Brazilian student practice ${language.nativeName} (${language.name}).
-
-IMPORTANT INSTRUCTIONS:
-- Respond naturally in ${language.nativeName} to the conversation
-- After each of your ${language.nativeName} responses, add a feedback section in Portuguese starting with "💡 Feedback:"
-- In the feedback, comment on: pronunciation hints, grammar corrections if needed, vocabulary suggestions, and encouragement
-- Keep feedback brief (2-3 sentences) and positive
-- If they make mistakes, correct them gently in the feedback section
-- At the end of conversation (if they say goodbye), provide a performance summary in Portuguese` : ""
+  const [allowedScenarios, setAllowedScenarios] = useState<string[] | null>(null)
+  const [allowedLanguages, setAllowedLanguages] = useState<string[] | null>(null)
+  const [userPlanId, setUserPlanId] = useState<string | null>(null)
 
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
@@ -110,90 +87,170 @@ IMPORTANT INSTRUCTIONS:
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [messageCountInCredit, setMessageCountInCredit] = useState(0)
   const [showCreditWarning, setShowCreditWarning] = useState(false)
+  const [openUpgradeModal, setOpenUpgradeModal] = useState(false)
+
+  // ✅ MELHORIA 1: Extração mais robusta de scenarioId e languageId
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const pathname = window.location?.pathname || ""
+        const searchParams = new URLSearchParams(window.location?.search || "")
+        
+        // Pega scenarioId do último segmento da URL
+        const pathParts = pathname.split("/").filter(Boolean)
+        const extractedScenarioId = pathParts[pathParts.length - 1] || ""
+        setScenarioId(extractedScenarioId)
+
+        // Pega language de query param
+        const lang = searchParams.get("language")
+        if (lang && typeof lang === "string") {
+          setLanguageId(lang)
+        }
+      } catch (error) {
+        console.error("Error parsing URL:", error)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    let mounted = true
+    async function fetchPlan() {
+      try {
+        const res = await fetch("/api/plan")
+        if (!res.ok) throw new Error("Failed to fetch plan")
+        const data = await res.json()
+        if (!mounted) return
+        setAllowedScenarios(Array.isArray(data.scenarios) ? data.scenarios : [])
+        setAllowedLanguages(Array.isArray(data.languages) ? data.languages : [])
+        setUserPlanId(data.planId || null)
+      } catch (error) {
+        console.error("Error fetching plan:", error)
+        if (mounted) {
+          setAllowedScenarios([])
+          setAllowedLanguages([])
+        }
+      }
+    }
+    fetchPlan()
+    return () => { mounted = false }
+  }, [])
 
   useEffect(() => {
     async function fetchCreditsAndMessages() {
       try {
         const response = await fetch("/api/credits")
-        if (!response.ok) {
-          throw new Error("Failed to fetch credits")
-        }
+        if (!response.ok) throw new Error("Failed to fetch credits")
         const data = await response.json()
         setUserCredits(data.credits ?? 0)
         setMessageCountInCredit(data.message_count || 0)
       } catch (error) {
-        console.error("[v0] Error fetching credits:", error)
+        console.error("Error fetching credits:", error)
         setUserCredits(0)
       }
     }
     fetchCreditsAndMessages()
   }, [])
 
+  const scenario = scenarioData[scenarioId]
+  const language = languageConfig[languageId]
+  
+  // ✅ MELHORIA 2: Validação antes de montar reconhecimento de voz
+  const isScenarioAllowed = allowedScenarios?.includes(scenarioId) ?? false
+  const isLanguageAllowed = allowedLanguages?.includes(languageId) ?? false
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    if (!scenarioId || !languageId) return
+    if (!allowedScenarios || !allowedLanguages) return
+
+    // ✅ BLOQUEIO: Não inicializa reconhecimento se não estiver permitido
+    if (!isScenarioAllowed || !isLanguageAllowed) {
+      console.warn("Cenário ou idioma não permitido - reconhecimento de voz bloqueado")
+      return
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) return
+
+    setSpeechSupported(true)
+    const recognition = new SpeechRecognition()
+
+    const lang = languageConfig[languageId] || languageConfig.english
+    recognition.lang = lang.code
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+
+    recognition.onresult = (event: any) => {
+      try {
+        const result = event.results?.[0]?.[0]
+        const transcript = result?.transcript
+        if (transcript && typeof transcript === "string" && transcript.trim().length > 0) {
+          const cleanTranscript = transcript.trim()
+          console.log("Audio transcribed:", cleanTranscript)
+          setInput(cleanTranscript)
+          setTimeout(() => {
+            handleSendAfterTranscription(cleanTranscript)
+          }, 100)
+        }
+      } catch (error) {
+        console.error("Error processing speech result:", error)
+        setIsRecording(false)
+      }
+    }
+
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error:", event.error)
+      setIsRecording(false)
+    }
+
+    recognition.onend = () => {
+      console.log("Recording ended")
+      setIsRecording(false)
+    }
+
+    recognitionRef.current = recognition
+  }, [scenarioId, languageId, allowedScenarios, allowedLanguages, isScenarioAllowed, isLanguageAllowed])
+
+  // ✅ MELHORIA 3: Abre modal automaticamente quando detecta bloqueio
+  useEffect(() => {
+    if (allowedScenarios && allowedLanguages && scenarioId && languageId) {
+      if (!isScenarioAllowed || !isLanguageAllowed) {
+        setOpenUpgradeModal(true)
+      }
+    }
+  }, [allowedScenarios, allowedLanguages, scenarioId, languageId, isScenarioAllowed, isLanguageAllowed])
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  useEffect(() => {
-  if (typeof window === "undefined") return;
-  if (!scenario || !language) return; // ✅ proteção extra
+  const systemPrompt =
+    scenario && language
+      ? `You are ${scenario.character}, a friendly ${scenario.characterRole} helping a Brazilian student practice ${language.nativeName} (${language.name}).
 
-  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-  if (!SpeechRecognition) return;
-
-  setSpeechSupported(true);
-  const recognition = new SpeechRecognition();
-
-  recognition.lang = language.code; // agora language é garantido
-  recognition.continuous = false;
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
-
-  recognition.onresult = (event: any) => {
-    try {
-      const result = event.results?.[0]?.[0];
-      const transcript = result?.transcript;
-
-      if (transcript && typeof transcript === "string" && transcript.trim().length > 0) {
-        const cleanTranscript = transcript.trim();
-        console.log("[v0] Audio transcribed:", cleanTranscript);
-        setInput(cleanTranscript);
-        setTimeout(() => {
-          handleSendAfterTranscription(cleanTranscript);
-        }, 100);
-      } else {
-        console.log("Invalid or empty transcript");
-      }
-    } catch (error) {
-      console.error("Error processing speech result:", error);
-      setIsRecording(false);
-    }
-  };
-
-  recognition.onerror = (event: any) => {
-    console.error("[v0] Speech recognition error:", event.error);
-    setIsRecording(false);
-  };
-
-  recognition.onend = () => {
-    console.log("[v0] Recording ended");
-    setIsRecording(false);
-  };
-
-  recognitionRef.current = recognition;
-}, [scenario, language]);
+IMPORTANT INSTRUCTIONS:
+- Respond naturally in ${language.nativeName} to the conversation
+- After each of your ${language.nativeName} responses, add a feedback section in Portuguese starting with "💡 Feedback:"
+- In the feedback, comment on: pronunciation hints, grammar corrections if needed, vocabulary suggestions, and encouragement
+- Keep feedback brief (2-3 sentences) and positive
+- If they make mistakes, correct them gently in the feedback section
+- At the end of conversation (if they say goodbye), provide a performance summary in Portuguese`
+      : ""
 
   const handleSendAfterTranscription = async (transcribedText: string) => {
-    // Validação rigorosa do texto
-    if (!transcribedText || 
-        typeof transcribedText !== "string" || 
-        transcribedText.trim().length === 0 || 
-        isLoading) {
-      console.log("Invalid transcription, skipping")
+    if (!transcribedText || typeof transcribedText !== "string" || transcribedText.trim().length === 0 || isLoading) return
+    if (!allowedScenarios || !allowedLanguages) return
+
+    // ✅ VALIDAÇÃO DUPLA
+    if (!isScenarioAllowed || !isLanguageAllowed) {
+      console.warn("Cenário ou idioma não permitido")
+      setOpenUpgradeModal(true)
       return
     }
 
     const cleanText = String(transcribedText).trim()
-    
+
     const userMessage: Message = {
       role: "user",
       content: cleanText,
@@ -207,10 +264,7 @@ IMPORTANT INSTRUCTIONS:
     try {
       const conversationHistory = [
         { role: "system", content: String(systemPrompt || "") },
-        ...messages.map((m) => ({ 
-          role: m.role, 
-          content: String(m.content || "") 
-        })),
+        ...messages.map((m) => ({ role: m.role, content: String(m.content || "") })),
         { role: "user", content: cleanText },
       ]
 
@@ -220,7 +274,10 @@ IMPORTANT INSTRUCTIONS:
         body: JSON.stringify({ messages: conversationHistory, scenarioId, language: languageId }),
       })
 
-      if (!response.ok) throw new Error("Failed to send message")
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}))
+        throw new Error(errBody?.error || "Failed to send message")
+      }
 
       const data = await response.json()
       const assistantMessage: Message = {
@@ -231,19 +288,20 @@ IMPORTANT INSTRUCTIONS:
 
       setMessages((prev) => [...prev, assistantMessage])
     } catch (error) {
-      console.error("[v0] Error sending message:", error)
+      console.error("Error sending message:", error)
     } finally {
       setIsLoading(false)
     }
   }
 
   const sendMessage = async () => {
-    // Validação rigorosa do input
-    if (!input || 
-        typeof input !== "string" || 
-        input.trim().length === 0 || 
-        isLoading) {
-      console.log("Invalid input, skipping")
+    if (!input || typeof input !== "string" || input.trim().length === 0 || isLoading) return
+    if (!allowedScenarios || !allowedLanguages) return
+
+    // ✅ VALIDAÇÃO DUPLA
+    if (!isScenarioAllowed || !isLanguageAllowed) {
+      console.warn("Cenário ou idioma não permitido")
+      setOpenUpgradeModal(true)
       return
     }
 
@@ -267,10 +325,7 @@ IMPORTANT INSTRUCTIONS:
     try {
       const conversationHistory = [
         { role: "system", content: String(systemPrompt || "") },
-        ...messages.map((m) => ({ 
-          role: m.role, 
-          content: String(m.content || "") 
-        })),
+        ...messages.map((m) => ({ role: m.role, content: String(m.content || "") })),
         { role: "user", content: cleanInput },
       ]
 
@@ -280,7 +335,10 @@ IMPORTANT INSTRUCTIONS:
         body: JSON.stringify({ messages: conversationHistory, scenarioId, language: languageId }),
       })
 
-      if (!response.ok) throw new Error("Failed to send message")
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}))
+        throw new Error(errBody?.error || "Failed to send message")
+      }
 
       const data = await response.json()
       const assistantMessage: Message = {
@@ -299,7 +357,7 @@ IMPORTANT INSTRUCTIONS:
         return newCount
       })
     } catch (error) {
-      console.error("[v0] Error sending message:", error)
+      console.error("Error sending message:", error)
     } finally {
       setIsLoading(false)
     }
@@ -307,6 +365,11 @@ IMPORTANT INSTRUCTIONS:
 
   const toggleRecording = () => {
     if (!recognitionRef.current) return
+    // ✅ Bloqueio adicional antes de gravar
+    if (!isScenarioAllowed || !isLanguageAllowed) {
+      setOpenUpgradeModal(true)
+      return
+    }
 
     if (isRecording) {
       recognitionRef.current.stop()
@@ -316,7 +379,7 @@ IMPORTANT INSTRUCTIONS:
       try {
         recognitionRef.current.start()
       } catch (error) {
-        console.error("[v0] Error starting recording:", error)
+        console.error("Error starting recording:", error)
         setIsRecording(false)
       }
     }
@@ -330,6 +393,17 @@ IMPORTANT INSTRUCTIONS:
       return
     }
 
+    // ✅ VALIDAÇÃO DUPLA antes de chamar backend
+    if (!allowedScenarios || !allowedLanguages) {
+      console.warn("Plan info not loaded yet")
+      return
+    }
+    if (!isScenarioAllowed || !isLanguageAllowed) {
+      console.warn("Cenário ou idioma não permitido")
+      setOpenUpgradeModal(true)
+      return
+    }
+
     setIsLoading(true)
     setConversationStarted(true)
 
@@ -337,12 +411,28 @@ IMPORTANT INSTRUCTIONS:
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: messages, scenarioId, language: languageId }),
+        body: JSON.stringify({
+          messages: [{ role: "system", content: systemPrompt }],
+          scenarioId,
+          language: languageId,
+        }),
       })
 
-      if (!response.ok) throw new Error("Failed to start conversation")
+      if (response.status === 403) {
+        console.warn("Backend bloqueou o plano -> abrir modal")
+        setOpenUpgradeModal(true)
+        setIsLoading(false)
+        setConversationStarted(false)
+        return
+      }
+
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}))
+        throw new Error(errBody?.error || "Failed to start conversation")
+      }
 
       const data = await response.json()
+
       setMessages([
         {
           role: "assistant",
@@ -350,8 +440,11 @@ IMPORTANT INSTRUCTIONS:
           timestamp: new Date(),
         },
       ])
-    } catch (error) {
-      console.error("[v0] Error starting conversation:", error)
+
+      setUserCredits(data.remainingCredits ?? userCredits)
+    } catch (err) {
+      console.error("Error starting conversation:", err)
+      setConversationStarted(false)
     } finally {
       setIsLoading(false)
     }
@@ -364,46 +457,75 @@ IMPORTANT INSTRUCTIONS:
   }
 
   const speakMessage = (content: string) => {
-    // Validação rigorosa antes de falar
-    if (!content || typeof content !== "string" || content.trim().length === 0) {
-      console.log("Invalid content for speech")
-      return
-    }
-    
+    if (!content || typeof content !== "string" || content.trim().length === 0) return
+
     try {
       const cleanContent = String(content).trim()
       const utterance = new SpeechSynthesisUtterance(cleanContent)
       utterance.lang = language?.code || "en-US"
-      
-      // Adicionar handlers de erro
       utterance.onerror = (event) => {
         console.error("Speech synthesis error:", event)
       }
-      
       speechSynthesis.speak(utterance)
     } catch (error) {
-      console.error("[v0] Error speaking message:", error)
+      console.error("Error speaking message:", error)
     }
   }
 
-  if (!scenario || !language) {
+  // ✅ Loading enquanto carrega permissões
+  if (allowedScenarios === null || allowedLanguages === null) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="text-center">
-          <h1 className="text-2xl font-bold mb-4">Cenário não encontrado</h1>
-          <Button onClick={() => window.location.href = '/scenarios'}>Voltar aos Cenários</Button>
+          <Loader2 className="animate-spin mx-auto mb-4" />
+          <p className="text-sm text-zinc-400">Carregando permissões do seu plano...</p>
         </div>
       </div>
     )
   }
 
+  // ✅ Cenário não encontrado
+  if (!scenario) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold mb-4">Cenário não encontrado</h1>
+          <Button onClick={() => (window.location.href = "/scenarios")}>Voltar aos Cenários</Button>
+        </div>
+      </div>
+    )
+  }
+
+  // ✅ MELHORIA 4: Fallback visual imediato se bloqueado
+  if (!isScenarioAllowed || !isLanguageAllowed) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="max-w-xl w-full bg-zinc-900 border border-zinc-800 rounded-lg p-6 text-center">
+          <h2 className="text-lg font-semibold text-white mb-2">{scenario.title}</h2>
+          <p className="text-sm text-zinc-400 mb-4">
+            {!isScenarioAllowed ? (
+              <>Este cenário não está disponível no seu plano {userPlanId ? `(${userPlanId})` : ''}.</>
+            ) : (
+              <>O idioma selecionado ({language?.name}) não está disponível no seu plano.</>
+            )}
+          </p>
+          <div className="flex gap-2 justify-center">
+            <Button onClick={() => (window.location.href = "/scenarios")}>Voltar aos Cenários</Button>
+            <Button variant="outline" onClick={() => (window.location.href = "/buy-credits")}>Fazer upgrade</Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ✅ UI principal
   return (
     <div className="min-h-screen bg-zinc-950 flex flex-col">
       <header className="bg-zinc-900 border-b border-zinc-800 sticky top-0 z-10">
         <div className="flex items-center justify-between px-3 py-3 sm:px-4 sm:py-4">
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            <button 
-              onClick={() => window.location.href = '/dashboard'}
+            <button
+              onClick={() => (window.location.href = "/dashboard")}
               className="text-zinc-400 hover:text-zinc-200 transition-colors flex-shrink-0"
             >
               <ArrowLeft className="h-5 w-5 sm:h-6 sm:w-6" />
@@ -458,11 +580,7 @@ IMPORTANT INSTRUCTIONS:
               {userCredits === 0 && (
                 <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4">
                   <p className="text-sm text-destructive font-medium mb-2">Sem créditos disponíveis</p>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={() => window.location.href = '/buy-credits'}
-                  >
+                  <Button variant="outline" size="sm" onClick={() => (window.location.href = "/buy-credits")}>
                     Comprar Créditos
                   </Button>
                 </div>
@@ -483,8 +601,8 @@ IMPORTANT INSTRUCTIONS:
               <div className="bg-destructive/10 border-b border-destructive/20 px-4 py-3">
                 <p className="text-sm text-destructive text-center font-medium">
                   Limite de 20 mensagens atingido!
-                  <button 
-                    onClick={() => window.location.href = '/buy-credits'}
+                  <button
+                    onClick={() => (window.location.href = "/buy-credits")}
                     className="underline ml-1 hover:text-destructive/80"
                   >
                     Compre mais créditos
@@ -579,9 +697,7 @@ IMPORTANT INSTRUCTIONS:
                     <button
                       onClick={toggleRecording}
                       disabled={isLoading}
-                      className={`flex-shrink-0 transition-all ${
-                        isRecording ? "text-red-500 scale-110" : "text-primary hover:text-primary/80"
-                      }`}
+                      className={`flex-shrink-0 transition-all ${isRecording ? "text-red-500 scale-110" : "text-primary hover:text-primary/80"}`}
                     >
                       <Mic className="h-5 w-5" />
                     </button>

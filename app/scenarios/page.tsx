@@ -1,12 +1,10 @@
 import Link from "next/link"
 import Image from "next/image"
 import { Lock } from "lucide-react"
-
-// Importações corrigidas
 import { getUserPlan } from "../../lib/products.server"
 import { ALL_SCENARIO_IDS } from "../../lib/products"
 
-// Mapeamento de IDs de cenário para títulos e imagens (mantido para referência)
+// Mapeamento dos cenários com título e imagem
 const scenarioDetails: Record<string, { title: string; image: string }> = {
   "meeting-friend": {
     title: "Conhecendo Alguém",
@@ -43,27 +41,28 @@ const scenarioDetails: Record<string, { title: string; image: string }> = {
 }
 
 export default async function ScenariosPage() {
-  // O erro 'Cannot find name 'getUserPlan'' foi corrigido pela importação acima.
-  const userPlan = await getUserPlan()
-  const availableScenarios = userPlan.scenarios
+  const userPlan = await getUserPlan() // Retorna o plano do usuário
+  const allowedScenarios = userPlan.scenarios // Lista de cenários liberados
 
-  // Corrigido o erro 7006: Parameter 'id' implicitly has an 'any' type.
-  const scenarios = ALL_SCENARIO_IDS.map((id: string) => ({
+  const scenarios = ALL_SCENARIO_IDS.map((id) => ({
     id,
     ...scenarioDetails[id],
-    isAvailable: availableScenarios.includes(id),
+    isAvailable: allowedScenarios.includes(id), // verifica permissão
   }))
 
   return (
     <div className="max-w-6xl mx-auto py-12 px-6">
-      <h1 className="text-3xl font-bold mb-8 text-center">Selecione um Cenário</h1>
+      <h1 className="text-3xl font-bold mb-8 text-center">Escolha seu Cenário</h1>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-        {/* Corrigido o erro 7006: Parameter 'scenario' implicitly has an 'any' type. */}
-        {scenarios.map((scenario: { id: string; title: string; image: string; isAvailable: boolean }) => (
+        {scenarios.map((scenario) => (
           <Link
             key={scenario.id}
-            href={scenario.isAvailable ? `/select-language/${scenario.id}` : "/buy-credits"}
+            href={
+              scenario.isAvailable
+                ? `/select-language/${scenario.id}`
+                : "/upgrade" // redireciona para upgrade
+            }
             className={`group border rounded-lg overflow-hidden shadow transition ${
               scenario.isAvailable
                 ? "hover:shadow-lg cursor-pointer"
@@ -89,7 +88,9 @@ export default async function ScenariosPage() {
             <div className="p-4 flex justify-between items-center">
               <h2 className="text-lg font-medium">{scenario.title}</h2>
               {!scenario.isAvailable && (
-                <span className="text-sm text-red-500 font-semibold">Bloqueado</span>
+                <span className="text-sm text-red-500 font-semibold">
+                  Bloqueado
+                </span>
               )}
             </div>
           </Link>
